@@ -1,0 +1,411 @@
+---
+title: "Heart Failure Prediction Report"
+author: "Mohammad S. Sammoudi"
+date: "_`r format(Sys.Date(), '%d %B, %Y')`_"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+fontsize: 12pt
+header-includes:
+   - \usepackage[font={footnotesize,it}, labelfont={bf}]{caption}
+include-before: '`\newpage{}`{=latex}'
+urlcolor: blue
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE , warning = FALSE, message = FALSE,
+                      fig.align="center", out.width="60%")
+################## Install Basic Package required ###############
+#### Download the required Package
+if(!require(tidyverse))             install.packages("tidyverse", repos ="http://cran.us.r-project.org")
+if(!require(caret))                 install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(PerformanceAnalytics))  install.packages("PerformanceAnalytics", repos = "http://cran.us.r-project.org")
+if(!require(RColorBrewer))          install.packages("RColorBrewer", repos = "http://cran.us.r-project.org")
+if(!require(randomForest))          install.packages("randomForest", repos = "http://cran.us.r-project.org")
+if(!require(rpart))                 install.packages("rpart", repos = "http://cran.us.r-project.org")
+
+#### Use the required library
+library(tidyverse)
+library(caret)
+library("PerformanceAnalytics")
+library(corrplot)
+library(RColorBrewer)
+library(randomForest)
+library(rpart)
+set_theme <- theme(text = element_text(size=16), panel.border = element_rect(colour="black", linetype = "solid", fill=NA), plot.title = element_text(hjust = 0.5, size = 18), plot.caption = element_text(hjust = 0.5))
+```
+
+```{r, echo= FALSE}
+# **********************************************************************************************
+#### import and read the database
+# **********************************************************************************************
+# the github repo with the data set "telecom_users" is available here: https://github.com/MSammoudi
+# the file "heart_failure_clinical_records_dataset.csv" provided in the github repo must be included in the working (project) directory for the code below to run
+# you can download the data base file "heart_failure_clinical_records_dataset.csv" from kaggle website from the following link: https://www.kaggle.com/andrewmvd/heart-failure-clinical-data
+
+# read in the Heart Failure dataset and save the data in heart_failure_data variable
+heart_failure_data <- read.csv("heart_failure_clinical_records_dataset.csv", header = TRUE)
+
+# I have another object for data called heartfailure.dat, I will use it to split the data later
+# and to use it with machine learning models.
+#I will use read.csv function to read th file, so I can use the argument StringsAfFacotrs
+heartfailure.dat = read.csv("heart_failure_clinical_records_dataset.csv",stringsAsFactors = FALSE)
+#Define the factors in our dataset
+factors = c("anaemia","diabetes","high_blood_pressure","sex","smoking","DEATH_EVENT")
+#Change the variables data type in facrots vector to be factor datatype
+heartfailure.dat[factors] = lapply(heartfailure.dat[factors],factor)
+```
+
+## 1.0 Introduction
+
+Cardiovascular diseases (CVDs) are the number 1 cause of death globally, taking an estimated 17.9 million lives each year, which accounts for 31% of all deaths worlwide.
+Most cardiovascular diseases can be prevented by addressing behavioural risk factors such as tobacco use, unhealthy diet and obesity, physical inactivity and harmful use of alcohol using population-wide strategies.
+People with cardiovascular disease or who are at high cardiovascular risk (due to the presence of one or more risk factors such as hypertension, diabetes, hyperlipidaemia or already established disease) need early detection and management wherein a machine learning model can be of great help.
+
+## 1.1 Objective
+The main objective of this project is to explore the Heart Failure Dataset, and to apply several models of machine learning on it.
+This aims to find the optimal model that gives best performance.
+The best model will give best predictions on heart failure.
+
+## 1.2 Dataset overview
+We used a dataset from kaggle website (https://www.kaggle.com/andrewmvd/heart-failure-clinical-data).
+This dataset is tidy data and includes 299 observations with 13 variables as shown below:
+
+```{r, echo=FALSE}
+dim(heart_failure_data) ## return dataset dimention 299 * 13
+```
+
+and the structure of the data is shown below:
+
+```{r, echo=FALSE}
+### show the structure of  the Data
+str(heart_failure_data)
+```
+
+## Description of the variables
+
+The dataset has 13 variables:-
+1- age: the age of the patient and they are between 40 and 95 years old.(num)
+2- anaemia: wheather the patient has anaemia or not(Decrease of red blood cells or hemoglobin) (int 0 or 1).
+3- creatinine_phosphokinase: The level of creatinine phosphokinase in the blood.(int) 
+4- diabetes: wheatherthe patiens has diabetes or not(int 0 or 1).
+5- ejection_fraction: how well your left ventricle (or right ventricle) pumps blood with each heart beat.
+6- high_blood_pressure: wheather the patinet has hypertension  or not (int 0 or 1).
+7- platelets: number of platelets in the blood.(num)
+8- serum_creatinine: The measure of creatinine in blood (num). 
+9- serum_sodium: The measure of Sodium in blood(int).
+10- sex: The gender male(1) or female(0)(int).
+11- smoking: wheather the patinet smoke or not (int 0 or 1).
+12- time: Follow up period in days (int) (I will exclude this variable from analysis).
+13- DEATH_EVENT: if the patient died during the follow-up period. 0 for no and 1 for yes.
+
+Let's look at the first 6 results from the data set.
+
+```{r}
+#show the first 6 rows in our dataset
+head (heartfailure.dat)
+```
+
+## 2.0 Visualization and Exploratory Data Analysis EDA
+In this section, I will start visualizing the variables to get insights about them, and to find the correlation between them.
+
+Let's check if there are any missing data in the dataset.
+
+```{r}
+# Checking if there are any missing values in the dataset
+sum(is.na(heart_failure_data))
+```
+
+We see that there is no missing data.
+
+Now let's find the correlation between variables throug a correlation matrix.
+
+```{r, echo=FALSE}
+# Having a look at the correlation matrix
+#Find and plot the correlation matrix between the variables
+df_cor <-cor(heart_failure_data)
+corrplot(df_cor, type="full", order="hclust",
+         col=brewer.pal(n=8, name="RdYlBu"))
+```
+
+From the plot above, we see that some variables have strong corrrelation with each other, but most of them have weak correlation.
+The average correlation in the dataset is 0.156153:
+```{r}
+mean(abs(df_cor))
+```
+
+And now we'll start exploring varibles one by one and plot them to conclude a results about them on how  they can affect our classification purpose.
+
+## 2.1 Age
+
+The first variable in our dataset is the Age. The follwing table shows the density plot of patients ages.
+
+```{r, echo=FALSE}
+#Age of patients distribution
+heart_failure_data %>%
+  ggplot(aes(age, fill=as.factor(DEATH_EVENT)))+
+  geom_histogram(binwidth = 5, position = "identity",alpha = 0.5,color = "white")+
+  xlab("Age") +
+  ylab("Number of patients") +
+  theme_classic() +
+  labs(caption = "Age Distribution with Death Event")
+#The average age of the patients seems to be between 55 to 75 years. With the maximum age
+#being 95 and the minimum being 40 years.
+
+```
+
+From above figure, we can condlude the follwing:-
+
+1- The average age of the patients seems to be between 55 to 75 years, With the maximum age
+being 95 and the minimum being 40 years.
+
+2- As the age increses, the probability of death increases.
+
+## 2.2 Blood Pressure
+The figure below shows the distribution of patiens with presence of high blood pressure or not.
+
+```{r,echo=FALSE}
+##Blood pressure distribution
+pie(table(heart_failure_data$high_blood_pressure),
+    labels = c("Normal Blood Pressure", "High Blood Pressure"),
+    main = "Blood Pressure Distribution",
+    col = c("yellow", "red"))
+```
+
+Now, let's see how blood pressure affect the heart failure. This is shown in the next figure.
+
+
+```{r, echo=FALSE}
+## Blood pressure effect on death_event.
+ggplot(heart_failure_data,aes(x = high_blood_pressure,fill = as.factor(DEATH_EVENT)))+
+  geom_bar() + theme_classic()
+```
+
+The figure above shows the realtion of blood pressure with heart failure. We can see from this figure that presence of high blood pressure not increase the probability of heart failure.
+
+## 2.3 Anaemia
+
+Anaemia is the Decrease of red blood cells or hemoglobin, so does thre is a relation between anaemia and heart failure. 
+
+The follwing figure shows the anaemia distribution and there are no effect on DEATH_EVENT.
+
+```{r, echo=FALSE}
+## Anaemia distribution between patients
+heart_failure_data %>%
+  group_by(anaemia) %>%
+  ggplot(aes(anaemia, fill = as.factor(DEATH_EVENT)))+
+  geom_bar()
+```
+
+From above figure, we conclude that approximately heart failure does not has a realtion with anaemia.
+
+## 2.4 Ejectino Fraction
+
+Ejection fraction (EF) is a measurement, expressed as a percentage, of how much blood the left ventricle pumps out with each contraction. An ejection fraction of 60 percent means that 60 percent of the total amount of blood in the left ventricle is pushed out with each heartbeat.
+
+This indication of how well the heart is pumping out blood can help to diagnose and track heart failure. A normal heart’s ejection fraction may be between 50 and 70 percent.
+
+```{r, echo=FALSE}
+#Ejection Fraction¶
+ggplot(heart_failure_data,aes(x = ejection_fraction,fill = as.factor(DEATH_EVENT)))+
+  geom_bar() + theme_classic()
+```
+
+According to the plot above when ejection fraction is low, then the heart failure becomes more likely to happen.
+
+## 2.5 PlateLets
+
+This variable is the number of platelets in the blood.
+
+The following figure shows that the distributions of Platlets count in the absence or presence of death events are similar.
+
+```{r, echo=FALSE}
+# PlateLets
+ggplot(heart_failure_data,aes(x = platelets,fill = as.factor(DEATH_EVENT)))+
+  geom_density(alpha = 0.2) + theme_classic()
+```
+
+## 2.6 Smoking
+
+This variable is factor and shows the patients wheather they are smoking or not.
+
+The distribution of smokers in the data set is shown below:
+
+```{r, echo=FALSE}
+pie(table(heart_failure_data$smoking),
+    labels = c("Non-Smoker", "Smoker"),
+    main = "Smoking Distribution",
+    col = c("green","red"))
+```
+
+And the Smoking distribution  with death event is shown below:
+
+```{r, echo=FALSE}
+#Smoking effect on death event
+ggplot(heart_failure_data,aes(x = smoking,fill = as.factor(DEATH_EVENT)))+
+  geom_bar() + theme_classic()
+```
+
+We can conclude from the figure above that Smokiers are more likely to have heart failure than non smokers.
+
+## 2.7 diabets 
+
+Some of patients on the dataset have diabetes, and the distribution is shown below:
+
+```{r,echo=FALSE}
+## Diabetes distribution between patients
+heart_failure_data %>%
+  group_by(diabetes) %>%
+  ggplot(aes(diabetes))+
+  geom_bar(aes(fill = ..count..))
+```
+
+So, does if the patient has diabetes, will have more probability to have a heart failure?
+The relationship between death_event and diabetes is shown in the next figure:
+
+```{r, echo=FALSE}
+## Diabetes effect on death_event.
+ggplot(heart_failure_data,aes(x = diabetes,fill = as.factor(DEATH_EVENT)))+
+  geom_bar() + theme_classic()
+```
+
+The above figure shows that diabetes has no effect on heart failure.
+
+## 2.8 Sex 
+
+According to the figure below, it appears that females are more likely to have a heart failure.
+
+```{r,echo=FALSE}
+## Sex distribution between patients
+ggplot(heart_failure_data,aes(x = sex,fill = as.factor(DEATH_EVENT)))+
+  geom_bar() + theme_classic()
+```
+
+## 2.9 Serum Sodium
+
+According the next figure the serum sodium not affect the death event a lot.
+
+```{r, echo=FALSE}
+#serum_sodium
+ggplot(heart_failure_data,aes(x = serum_sodium,fill = as.factor(DEATH_EVENT)))+
+  geom_bar() + theme_classic()
+```
+
+## 3.0 Results
+
+This section will have methodology that we work with and the resutls obtained from applying five different machine learning models.
+
+The methods used for prediction of heart failure  are:
+
+1- Logistic Regression.                  
+2- Random Forest.
+3- Decision Tree.
+4- Quadratic Discriminant Analysis.
+5- Linear Discriminant Analysis
+
+
+## 3.1 Project Methodology
+
+We will follow the following steps to analyze the data and reach our goal of a masximum
+accuracy:-
+
+\begin{itemize}
+  \item Firstly we need to download data and explore its observations and variables, then we’ll
+make some visualizations to better understanding the data and this will help us later in
+choosing the appropriate model, and this is done in section 2.
+  \item Then We’ll start building models with the ideas gaind from the first step using machine
+learning models.
+  \item Before start building models, we will split the  data to trainig set and testing set, the training set will be used to train the models and evaluation will be done using the testing set.
+  \item We will use 5 classification and machine learning models which are (Logistic regression, Random Forest, Disision trees model, Quadratic Discriminant Anallysis QDA and Linear Discriminant Analysis LDA)
+  \item The different used models needs some tuning, so we will use cross validation technique to have the best tuning and get the best accuarcy.
+  \item We will evaluate all models using the accuracy, sensitivity and specificty.
+\end{itemize}
+
+## 3.2 Model Evaluation.
+
+We will choose the best machine learning model by the follwing criteria.
+
+1- Maximum accuracy. (The proportion of cases that were correctly predicted in the test set)
+2- Maximum sensitivity.(Also known as the true positive rate (TPR) or recall, is the proportion of
+actual positive outcomes correctly identified as such.)
+3- Maximum specificity. (Also known as the true negative rate (TNR), is the proportion of actual
+negative outcomes that are correctly identified as such.)
+
+and all these results can be got from the confusion matrix for each model. The confusion matrix tabulates each combination of prediction and actual value, it determines the results by combining the referenced and predicted outputs.
+
+## 3.3 Splitting the dataset into training and testing sets.
+
+Before we start building models, it is necessary to split our data into two parts, the first set is called training set and will be used to train models.The other set is called testing set and will be used to test the model.
+
+The train set will be called train and has 80% of the data. The testing set will have 20% of data and called test.x set.
+
+test.y will be a vectory that has the DEATH_EVENT variable, this variable will be the classification outcome.
+
+```{r, echo=FALSE}
+set.seed(1989, sample.kind="Rounding")
+
+#split the dataset to trainig set and test set (80% training and 20$ testing)
+trainIndex = sample(1:length(heartfailure.dat$DEATH_EVENT),0.8*length(heartfailure.dat$DEATH_EVENT))
+#Training set with 80% of observation and 13 variables
+train = heartfailure.dat[trainIndex,-c(12,14:16)]
+#Testing set with 20% of observations and 12 variables (all variables except the dependent varibble)
+test.x = heartfailure.dat[-trainIndex,-c(12,13:16)]
+#Factor vector for the dependent variable DEATH.EVENT in the testing set.
+test.y = heartfailure.dat[-trainIndex,13]
+
+```
+
+## 3.4 Building models
+
+We will start building different models and after each model built, we will check the accuracy, sensitivity and specificty values, so at the end we will have our final model.
+
+## 3.4 Model 1: Logistic Regression Model (GLM)
+
+The general form of a logistic regression model is:
+
+\begin{equation}
+  \log \left(\frac{\hat{\pi}_i}{1-\hat{\pi}_i} \right)=\mathbf{x}_i^T\beta
+\end{equation}
+
+where $\hat{\pi}_i$ is the estimated probability that observation $i$ is positive, $\mathbf{x}_i$ is the $i^{th}$ vector in the design matrix and $\beta$ is the vector of coefficients.
+
+Let’s fit the model using the base general linear modeling function in R, glm.
+
+```{r, echo=FALSE}
+#Logistic Regression (glm) model will train data in train_data and test it again test_data.
+model_glm <- glm(DEATH_EVENT ~ ., data = train, family = "binomial")
+```
+
+The output of the glm model is shown below:
+
+```{r, echo=FALSE}
+### Print the result of Logistic regression model
+model_glm
+```
+
+Now, lets define the predictions for this glm_model using the predict function.
+
+```{r, echo=FALSE}
+### Define predictions for the glm model
+preds_glm <- predict(model_glm, newdata = test.x, type = "response")
+
+```
+
+And for this model we will use a cutoff of 0.5 to make our decision.
+
+```{r}
+y_hat_glm <- ifelse(preds_glm > 0.5, 1, 0)
+```
+
+and finally, the results are showin in the follwing confusion matrix
+
+```{r, echo=FALSE}
+confusionMatrix(as.factor(y_hat_glm), test.y)
+
+```
+
+We can see that the accuracy is 0.7666667, sensitivity is 0.9091 and specificity is 0.3750.
+
+We will make a dataframe that handle all results for all models for the purpose on comparison.
+
